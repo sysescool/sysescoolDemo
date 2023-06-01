@@ -1,8 +1,10 @@
 package com.webrtc.android.avcall.activity;
 
+import android.Manifest;
 import android.content.Context;
 import android.content.Intent;
 import android.os.Bundle;
+import android.provider.MediaStore;
 import android.support.v7.app.AppCompatActivity;
 import android.text.method.ScrollingMovementMethod;
 import android.util.Log;
@@ -52,6 +54,8 @@ import java.util.LinkedList;
 import java.util.List;
 import java.util.UUID;
 
+import pub.devrel.easypermissions.EasyPermissions;
+
 public class CallActivity extends AppCompatActivity {
 
     private static final int VIDEO_RESOLUTION_WIDTH = 1280;
@@ -82,14 +86,27 @@ public class CallActivity extends AppCompatActivity {
 
     private VideoTrack mVideoTrack;
     private AudioTrack mAudioTrack;
-
+    private boolean mAudioTrackAdded = false;
     private VideoCapturer mVideoCapturer;
 
     private void micBtnDown() {
-
+        String[] perms = {Manifest.permission.RECORD_AUDIO}; //, Manifest.permission.RECORD_AUDIO};
+        if (!EasyPermissions.hasPermissions(this, perms)) {
+            EasyPermissions.requestPermissions(this, "Need permissions for microphone", 0, perms);
+        }
+        if (EasyPermissions.hasPermissions(this, perms) && mAudioTrackAdded == false) {
+            logcatOnUI("micBtn: audioTrack Added!");
+            List<String> mediaStreamLabels = Collections.singletonList("ARDAMS");
+            mPeerConnection.addTrack(mAudioTrack, mediaStreamLabels);
+            mAudioTrackAdded = true;
+            doStartCall();
+        }
+        if (EasyPermissions.hasPermissions(this, perms) && mAudioTrackAdded == true) {
+            mAudioTrack.setEnabled(true);
+        }
     }
     private void micBtnUp() {
-
+        mAudioTrack.setEnabled(false);
     }
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -188,7 +205,7 @@ public class CallActivity extends AppCompatActivity {
     public static class SimpleSdpObserver implements SdpObserver {
         @Override
         public void onCreateSuccess(SessionDescription sessionDescription) {
-            Log.i(TAG, "SdpObserver: onCreateSuccess !");
+            Log.i(TAG, "SdpObserver: onCreateSuccess!");
         }
 
         @Override
@@ -203,7 +220,6 @@ public class CallActivity extends AppCompatActivity {
 
         @Override
         public void onSetFailure(String msg) {
-
             Log.e(TAG, "SdpObserver onSetFailure: " + msg);
         }
     }
@@ -234,6 +250,7 @@ public class CallActivity extends AppCompatActivity {
             @Override
             public void onCreateSuccess(SessionDescription sessionDescription) {
                 Log.i(TAG, "Create local offer success: \n" + sessionDescription.description);
+                logcatOnUI("SdpObserver: onCreateSuccess!");
                 mPeerConnection.setLocalDescription(new SimpleSdpObserver(), sessionDescription);
                 JSONObject message = new JSONObject();
                 try {
@@ -297,7 +314,7 @@ public class CallActivity extends AppCompatActivity {
 
     public PeerConnection createPeerConnection() {
         Log.i(TAG, "Create PeerConnection ...");
-
+        logcatOnUI("Create PeerConnection ...");
         LinkedList<PeerConnection.IceServer> iceServers = new LinkedList<PeerConnection.IceServer>();
 
         PeerConnection.IceServer ice_server =
@@ -324,13 +341,14 @@ public class CallActivity extends AppCompatActivity {
                 mPeerConnectionFactory.createPeerConnection(rtcConfig,
                                                             mPeerConnectionObserver);
         if (connection == null) {
-            Log.e(TAG, "Failed to createPeerConnection !");
+            Log.e(TAG, "Failed to createPeerConnection!");
+            logcatOnUI("Failed to createPeerConnection!");
             return null;
         }
 
         List<String> mediaStreamLabels = Collections.singletonList("ARDAMS");
         connection.addTrack(mVideoTrack, mediaStreamLabels);
-        connection.addTrack(mAudioTrack, mediaStreamLabels);
+        // connection.addTrack(mAudioTrack, mediaStreamLabels);
 
         return connection;
     }
@@ -402,27 +420,32 @@ public class CallActivity extends AppCompatActivity {
         @Override
         public void onSignalingChange(PeerConnection.SignalingState signalingState) {
             Log.i(TAG, "onSignalingChange: " + signalingState);
+            logcatOnUI("PcObserver: onSignalingChange");
         }
 
         @Override
         public void onIceConnectionChange(PeerConnection.IceConnectionState iceConnectionState) {
             Log.i(TAG, "onIceConnectionChange: " + iceConnectionState);
+            logcatOnUI("PcObserver: onIceConnectionChange");
         }
 
         @Override
         public void onIceConnectionReceivingChange(boolean b) {
-            Log.i(TAG, "onIceConnectionChange: " + b);
+            Log.i(TAG, "onIceConnectionReceivingChange: " + b);
+            logcatOnUI("PcObserver: onIceConnectionReceivingChange");
         }
 
         @Override
         public void onIceGatheringChange(PeerConnection.IceGatheringState iceGatheringState) {
             Log.i(TAG, "onIceGatheringChange: " + iceGatheringState);
+            logcatOnUI("PcObserver: onIceGatheringChange");
+
         }
 
         @Override
         public void onIceCandidate(IceCandidate iceCandidate) {
             Log.i(TAG, "onIceCandidate: " + iceCandidate);
-
+            logcatOnUI("PcObserver: onIceCandidate");
             try {
                 JSONObject message = new JSONObject();
                 //message.put("userId", RTCSignalClient.getInstance().getUserId());
@@ -440,6 +463,7 @@ public class CallActivity extends AppCompatActivity {
         public void onIceCandidatesRemoved(IceCandidate[] iceCandidates) {
             for (int i = 0; i < iceCandidates.length; i++) {
                 Log.i(TAG, "onIceCandidatesRemoved: " + iceCandidates[i]);
+                logcatOnUI("PcObserver: onIceCandidatesRemoved:" + i);
             }
             mPeerConnection.removeIceCandidates(iceCandidates);
         }
@@ -447,21 +471,25 @@ public class CallActivity extends AppCompatActivity {
         @Override
         public void onAddStream(MediaStream mediaStream) {
             Log.i(TAG, "onAddStream: " + mediaStream.videoTracks.size());
+            logcatOnUI("PcObserver: onAddStream");
         }
 
         @Override
         public void onRemoveStream(MediaStream mediaStream) {
             Log.i(TAG, "onRemoveStream");
+            logcatOnUI("PcObserver: onRemoveStream");
         }
 
         @Override
         public void onDataChannel(DataChannel dataChannel) {
             Log.i(TAG, "onDataChannel");
+            logcatOnUI("PcObserver: onDataChannel");
         }
 
         @Override
         public void onRenegotiationNeeded() {
             Log.i(TAG, "onRenegotiationNeeded");
+            logcatOnUI("PcObserver: onRenegotiationNeeded");
         }
 
         @Override
@@ -469,9 +497,17 @@ public class CallActivity extends AppCompatActivity {
             MediaStreamTrack track = rtpReceiver.track();
             if (track instanceof VideoTrack) {
                 Log.i(TAG, "onAddVideoTrack");
+                logcatOnUI("PcObserver: onAddVideoTrack");
                 VideoTrack remoteVideoTrack = (VideoTrack) track;
                 remoteVideoTrack.setEnabled(true);
                 remoteVideoTrack.addSink(mRemoteSurfaceView);
+            }
+            if (track instanceof AudioTrack) {
+                Log.i(TAG, "onAddAudioTrack");
+                logcatOnUI("PcObserver: onAddAudioTrack");
+                AudioTrack remoteAudioTrack = (AudioTrack) track;
+                remoteAudioTrack.setEnabled(true);
+                //remoteAudioTrack.setVolume(9.0);
             }
         }
     };
@@ -584,8 +620,8 @@ public class CallActivity extends AppCompatActivity {
         public void onMessage(JSONObject message) {
 
             Log.i(TAG, "onMessage: " + message);
-
             try {
+                logcatOnUI("onMessage: " + message.getString("type"));
                 String type = message.getString("type");
                 if (type.equals("offer")) {
                     onRemoteOfferReceived(message);
@@ -661,7 +697,7 @@ public class CallActivity extends AppCompatActivity {
         runOnUiThread(new Runnable() {
             @Override
             public void run() {
-                String output = mLogcatView.getText() + "\n" + msg;
+                String output = mLogcatView.getText() + "\n> " + msg;
                 mLogcatView.setText(output);
             }
         });

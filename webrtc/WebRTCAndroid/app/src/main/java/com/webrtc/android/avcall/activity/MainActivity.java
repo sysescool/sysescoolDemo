@@ -34,9 +34,9 @@ public class MainActivity extends AppCompatActivity {
             }
         });
 
-        String[] perms = {Manifest.permission.CAMERA, Manifest.permission.RECORD_AUDIO};
+        String[] perms = {Manifest.permission.CAMERA}; //, Manifest.permission.RECORD_AUDIO};
         if (!EasyPermissions.hasPermissions(this, perms)) {
-            EasyPermissions.requestPermissions(this, "Need permissions for camera & microphone", 0, perms);
+            EasyPermissions.requestPermissions(this, "Need permissions for camera", 0, perms);
         }
     }
 
