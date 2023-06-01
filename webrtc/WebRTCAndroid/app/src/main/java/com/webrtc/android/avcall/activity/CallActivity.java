@@ -4,7 +4,9 @@ import android.content.Context;
 import android.content.Intent;
 import android.os.Bundle;
 import android.support.v7.app.AppCompatActivity;
+import android.text.method.ScrollingMovementMethod;
 import android.util.Log;
+import android.view.MotionEvent;
 import android.view.View;
 import android.widget.Button;
 import android.widget.TextView;
@@ -59,7 +61,7 @@ public class CallActivity extends AppCompatActivity {
     private String mState = "init";
 
     private TextView mLogcatView;
-
+    private Button mBtnMic;
     private static final String TAG = "CallActivity";
 
     public static final String VIDEO_TRACK_ID = "1";//"ARDAMSv0";
@@ -83,18 +85,24 @@ public class CallActivity extends AppCompatActivity {
 
     private VideoCapturer mVideoCapturer;
 
+    private void micBtnDown() {
+
+    }
+    private void micBtnUp() {
+
+    }
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
         setContentView(R.layout.activity_call);
 
         mLogcatView = findViewById(R.id.LogcatView);
-
+        mLogcatView.setMovementMethod(ScrollingMovementMethod.getInstance());
         mRootEglBase = EglBase.create();
 
         mLocalSurfaceView = findViewById(R.id.LocalSurfaceView);
         mRemoteSurfaceView = findViewById(R.id.RemoteSurfaceView);
-
+        mBtnMic = findViewById( R.id.Mic );
         mLocalSurfaceView.init(mRootEglBase.getEglBaseContext(), null);
         mLocalSurfaceView.setScalingType(RendererCommon.ScalingType.SCALE_ASPECT_FILL);
         mLocalSurfaceView.setMirror(true);
@@ -105,7 +113,22 @@ public class CallActivity extends AppCompatActivity {
         mRemoteSurfaceView.setMirror(true);
         mRemoteSurfaceView.setEnableHardwareScaler(true /* enabled */);
         mRemoteSurfaceView.setZOrderMediaOverlay(true);
-
+        mBtnMic.setOnTouchListener(new View.OnTouchListener() {
+            @Override
+            public boolean onTouch(View v, MotionEvent event) {
+                switch ( event.getAction() ) {
+                    case MotionEvent.ACTION_DOWN:
+                        mBtnMic.setBackgroundResource(R.drawable.mic_btn_press_shape);
+                        micBtnDown();
+                        break;
+                    case MotionEvent.ACTION_UP:
+                        mBtnMic.setBackgroundResource(R.drawable.mic_btn_nopress_shape);
+                        micBtnUp();
+                        break;
+                }
+                return false;
+            }
+        });
         //创建 factory， pc是从factory里获得的
         mPeerConnectionFactory = createPeerConnectionFactory(this);
 
