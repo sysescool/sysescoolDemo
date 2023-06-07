@@ -17,7 +17,9 @@ git clone https://github.com/coturn/coturn.git
 cd coturn
 sudo apt-get install build-essential pkg-config libssl-dev libssl-dev libsqlite3-dev libevent-dev libpq-dev mysql-client libmysqlclient-dev libhiredis-dev
 git checkout 4.6.2
+sudo mkdir /usr/local/coturn
 ./configure --prefix=/usr/local/coturn
+sudo make install
 cd /usr/local/coturn/etc
 sudo cp turnserver.conf.default turnserver.conf
 sudo vim turnserver.conf
