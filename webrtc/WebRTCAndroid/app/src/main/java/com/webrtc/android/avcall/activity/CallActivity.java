@@ -7,6 +7,7 @@ import android.os.Bundle;
 import android.provider.MediaStore;
 import android.support.v7.app.AppCompatActivity;
 import android.text.method.ScrollingMovementMethod;
+import android.util.AttributeSet;
 import android.util.Log;
 import android.view.MotionEvent;
 import android.view.View;
@@ -15,6 +16,7 @@ import android.widget.TextView;
 
 import com.webrtc.android.avcall.R;
 import com.webrtc.android.avcall.signal.SignalClient;
+import com.webrtc.android.avcall.view.SurfaceViewRenderer2;
 
 import org.json.JSONException;
 import org.json.JSONObject;
@@ -82,7 +84,9 @@ public class CallActivity extends AppCompatActivity {
 
     //继承自 surface view
     private SurfaceViewRenderer mLocalSurfaceView;
-    private SurfaceViewRenderer mRemoteSurfaceView;
+    // 在 SurfaceViewRenderer 和 SurfaceViewRenderer2 之前切换，SurfaceViewRenderer2 提供了获取帧处理帧的方法
+    // SurfaceViewRenderer mRemoteSurfaceView;
+    private SurfaceViewRenderer2 mRemoteSurfaceView;
 
     private VideoTrack mVideoTrack;
     private AudioTrack mAudioTrack;
