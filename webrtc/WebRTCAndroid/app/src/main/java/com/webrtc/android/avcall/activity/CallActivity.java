@@ -12,6 +12,7 @@ import android.view.MotionEvent;
 import android.view.View;
 import android.widget.Button;
 import android.widget.TextView;
+import android.widget.Toast;
 
 import com.webrtc.android.avcall.R;
 import com.webrtc.android.avcall.signal.SignalClient;
@@ -66,6 +67,7 @@ public class CallActivity extends AppCompatActivity {
 
     private TextView mLogcatView;
     private Button mBtnMic;
+    private Button mBtnCam;
     private static final String TAG = "CallActivity";
 
     public static final String VIDEO_TRACK_ID = "1";//"ARDAMSv0";
@@ -87,6 +89,8 @@ public class CallActivity extends AppCompatActivity {
     private VideoTrack mVideoTrack;
     private AudioTrack mAudioTrack;
     private boolean mAudioTrackAdded = false;
+    private boolean mVideoTrackAdded = false;
+    private boolean mPeerConnectionCreated = false;
     private VideoCapturer mVideoCapturer;
 
     private void micBtnDown() {
@@ -108,6 +112,40 @@ public class CallActivity extends AppCompatActivity {
     private void micBtnUp() {
         mAudioTrack.setEnabled(false);
     }
+    private void camBtnDown() {
+        // 当链接没有建立时，向 peerconnection 中 add video/audio track 会闪退
+        if (mPeerConnectionCreated == false) {
+            doStartCall();  // 通过该行调用，才能调用到 SDPOberver 那里
+            logcatOnUI("链接正在建立中，请稍后");
+            Toast.makeText(CallActivity.this, "链接正在建立中，请稍后", Toast.LENGTH_SHORT).show();
+            return;
+        }
+        String[] perms = {Manifest.permission.CAMERA};
+        if (!EasyPermissions.hasPermissions(this, perms)) {
+            EasyPermissions.requestPermissions(this, "Need permissions for camera", 0, perms);
+        }
+        if (EasyPermissions.hasPermissions(this, perms) && mVideoTrackAdded == false) {
+            logcatOnUI("micBtn: audioTrack Added!");
+            List<String> mediaStreamLabels = Collections.singletonList("ARDAMS");
+            mVideoCapturer.startCapture(VIDEO_RESOLUTION_WIDTH, VIDEO_RESOLUTION_HEIGHT, VIDEO_FPS);
+            mPeerConnection.addTrack(mVideoTrack, mediaStreamLabels);
+            mVideoTrackAdded = true;
+            doStartCall();
+        }
+        if (EasyPermissions.hasPermissions(this, perms) && mVideoTrackAdded == true) {
+            mVideoCapturer.startCapture(VIDEO_RESOLUTION_WIDTH, VIDEO_RESOLUTION_HEIGHT, VIDEO_FPS);
+            mVideoTrack.setEnabled(true);
+        }
+    }
+    private void camBtnUp() {
+        try {
+            mVideoCapturer.stopCapture();
+        } catch (InterruptedException e) {
+            e.printStackTrace();
+        }
+        mVideoTrack.setEnabled(false);
+        mLocalSurfaceView.clearImage();
+    }
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
@@ -119,6 +157,7 @@ public class CallActivity extends AppCompatActivity {
 
         mLocalSurfaceView = findViewById(R.id.LocalSurfaceView);
         mRemoteSurfaceView = findViewById(R.id.RemoteSurfaceView);
+        mBtnCam = findViewById( R.id.Cam );
         mBtnMic = findViewById( R.id.Mic );
         mLocalSurfaceView.init(mRootEglBase.getEglBaseContext(), null);
         mLocalSurfaceView.setScalingType(RendererCommon.ScalingType.SCALE_ASPECT_FILL);
@@ -130,6 +169,22 @@ public class CallActivity extends AppCompatActivity {
         mRemoteSurfaceView.setMirror(true);
         mRemoteSurfaceView.setEnableHardwareScaler(true /* enabled */);
         mRemoteSurfaceView.setZOrderMediaOverlay(true);
+        mBtnCam.setOnTouchListener(new View.OnTouchListener() {
+            @Override
+            public boolean onTouch(View v, MotionEvent event) {
+                switch ( event.getAction() ) {
+                    case MotionEvent.ACTION_DOWN:
+                        mBtnCam.setBackgroundResource(R.drawable.mic_btn_press_shape);
+                        camBtnDown();
+                        break;
+                    case MotionEvent.ACTION_UP:
+                        mBtnCam.setBackgroundResource(R.drawable.mic_btn_nopress_shape);
+                        camBtnUp();
+                        break;
+                }
+                return false;
+            }
+        });
         mBtnMic.setOnTouchListener(new View.OnTouchListener() {
             @Override
             public boolean onTouch(View v, MotionEvent event) {
@@ -176,17 +231,18 @@ public class CallActivity extends AppCompatActivity {
     @Override
     protected void onResume() {
         super.onResume();
-        mVideoCapturer.startCapture(VIDEO_RESOLUTION_WIDTH, VIDEO_RESOLUTION_HEIGHT, VIDEO_FPS);
+        // move to need permission.
+        // mVideoCapturer.startCapture(VIDEO_RESOLUTION_WIDTH, VIDEO_RESOLUTION_HEIGHT, VIDEO_FPS);
     }
 
     @Override
     protected void onPause() {
         super.onPause();
-        try {
-            mVideoCapturer.stopCapture();
-        } catch (InterruptedException e) {
-            e.printStackTrace();
-        }
+        // try {
+        //     mVideoCapturer.stopCapture();
+        // } catch (InterruptedException e) {
+        //     e.printStackTrace();
+        // }
     }
 
     @Override
@@ -252,6 +308,7 @@ public class CallActivity extends AppCompatActivity {
                 Log.i(TAG, "Create local offer success: \n" + sessionDescription.description);
                 logcatOnUI("SdpObserver: onCreateSuccess!");
                 mPeerConnection.setLocalDescription(new SimpleSdpObserver(), sessionDescription);
+                mPeerConnectionCreated = true;
                 JSONObject message = new JSONObject();
                 try {
                     message.put("type", "offer");
@@ -347,7 +404,7 @@ public class CallActivity extends AppCompatActivity {
         }
 
         List<String> mediaStreamLabels = Collections.singletonList("ARDAMS");
-        connection.addTrack(mVideoTrack, mediaStreamLabels);
+        // connection.addTrack(mVideoTrack, mediaStreamLabels);
         // connection.addTrack(mAudioTrack, mediaStreamLabels);
 
         return connection;
