@@ -40,7 +40,10 @@ import org.webrtc.MediaStreamTrack;
 import org.webrtc.PeerConnection;
 import org.webrtc.PeerConnectionFactory;
 import org.webrtc.RendererCommon;
+import org.webrtc.RtpParameters;
 import org.webrtc.RtpReceiver;
+import org.webrtc.RtpSender;
+import org.webrtc.RtpTransceiver;
 import org.webrtc.ScreenCapturerAndroid;
 import org.webrtc.SdpObserver;
 import org.webrtc.SessionDescription;
@@ -68,6 +71,7 @@ public class CallActivity extends AppCompatActivity {
 
     private TextView mLogcatView;
     private Button mBtnMic;
+    private Button mBtnCam;
     private Boolean mIsServer;
     private static final String TAG = "CallActivity";
 
@@ -75,7 +79,7 @@ public class CallActivity extends AppCompatActivity {
     public static final String AUDIO_TRACK_ID = "2";//"ARDAMSa0";
 
     //用于数据传输
-    private PeerConnection mPeerConnection;
+    private PeerConnection mPeerConnection = null;
     private PeerConnectionFactory mPeerConnectionFactory;
 
     //OpenGL ES
@@ -90,21 +94,71 @@ public class CallActivity extends AppCompatActivity {
     private VideoTrack mVideoTrack;
     private AudioTrack mAudioTrack;
     private boolean mAudioTrackAdded = false;
+    private boolean mVideoTrackAdded = false;
     private VideoCapturer mVideoCapturer;
+    private void camBtnDown() {
+        String[] perms = {Manifest.permission.CAMERA}; //, Manifest.permission.RECORD_AUDIO};
+        if (!EasyPermissions.hasPermissions(this, perms)) {
+            EasyPermissions.requestPermissions(this, "Need permissions for camera", 0, perms);
+        }
+        if (mPeerConnection != null && EasyPermissions.hasPermissions(this, perms)) {
 
+            RtpTransceiver transceiver = mPeerConnection.getTransceivers().get(0);
+
+            logcatOnUI("camBtn: videoTrack Added!");
+            List<String> mediaStreamLabels = Collections.singletonList("ARDAMSv0");
+            mPeerConnection.addTrack(mVideoTrack, mediaStreamLabels);
+            mVideoTrackAdded = true;
+            mVideoTrack.setEnabled(true);
+            doStartCall();
+        }
+//        if (EasyPermissions.hasPermissions(this, perms) && mVideoTrackAdded) {
+//            mVideoTrack.setEnabled(true);
+//        }
+    }
+    private void camBtnUp() {
+        if (mPeerConnection != null) {
+            List<RtpSender> senders = mPeerConnection.getSenders();
+            for(int i = 0; i < senders.size(); i++) {
+                RtpSender sender = senders.get(i);
+                if (sender != null) {
+                    MediaStreamTrack track = sender.track();
+                    if (track != null) {
+                        String kind = track.kind();
+                        if (kind != null) {
+                            Log.d(TAG, "Btn-sender " + i + " kind is: " + kind);
+                            if (kind.equals("video")) {
+                                Log.d(TAG, "Btn-video " + i + " kind sender is deleted.");
+                                mPeerConnection.removeTrack(sender);
+                            }
+                        } else {
+                            Log.d(TAG, "Btn-kind " + i + " is null.");
+                        }
+                    } else {
+                        Log.d(TAG, "Btn-track " + i + " is null.");
+                    }
+                } else {
+                    Log.d(TAG, "Btn-sender " + i + " is null.");
+                }
+            }
+        }
+//        mPeerConnection.removeTrack(senders.get(i));
+//        mVideoTrack.setEnabled(false);
+//        mVideoTrack.addSink(mLocalSurfaceView);
+    }
     private void micBtnDown() {
         String[] perms = {Manifest.permission.RECORD_AUDIO}; //, Manifest.permission.RECORD_AUDIO};
         if (!EasyPermissions.hasPermissions(this, perms)) {
             EasyPermissions.requestPermissions(this, "Need permissions for microphone", 0, perms);
         }
-        if (EasyPermissions.hasPermissions(this, perms) && mAudioTrackAdded == false) {
+        if (EasyPermissions.hasPermissions(this, perms) && !mAudioTrackAdded) {
             logcatOnUI("micBtn: audioTrack Added!");
-            List<String> mediaStreamLabels = Collections.singletonList("ARDAMS");
+            List<String> mediaStreamLabels = Collections.singletonList("ARDAMSa0");
             mPeerConnection.addTrack(mAudioTrack, mediaStreamLabels);
             mAudioTrackAdded = true;
             doStartCall();
         }
-        if (EasyPermissions.hasPermissions(this, perms) && mAudioTrackAdded == true) {
+        if (EasyPermissions.hasPermissions(this, perms) && mAudioTrackAdded) {
             mAudioTrack.setEnabled(true);
         }
     }
@@ -172,6 +226,7 @@ public class CallActivity extends AppCompatActivity {
         mLogcatView.setMovementMethod(ScrollingMovementMethod.getInstance());
         mRootEglBase = EglBase.create();
         mBtnMic = findViewById( R.id.Mic );
+        mBtnCam = findViewById( R.id.Cam );
 
         mLocalSurfaceView = (!mIsServer) ? findViewById(R.id.RemoteSurfaceView) : findViewById(R.id.LocalSurfaceView);
         mLocalSurfaceView.init(mRootEglBase.getEglBaseContext(), null);
@@ -186,7 +241,22 @@ public class CallActivity extends AppCompatActivity {
         mRemoteSurfaceView.setMirror(mIsServer);
         mRemoteSurfaceView.setEnableHardwareScaler(true /* enabled */);
         if(mIsServer) mRemoteSurfaceView.setZOrderMediaOverlay(true);
-
+        mBtnCam.setOnTouchListener(new View.OnTouchListener() {
+            @Override
+            public boolean onTouch(View v, MotionEvent event) {
+                switch ( event.getAction() ) {
+                    case MotionEvent.ACTION_DOWN:
+                        mBtnCam.setBackgroundResource(R.drawable.mic_btn_press_shape);
+                        camBtnDown();
+                        break;
+                    case MotionEvent.ACTION_UP:
+                        mBtnCam.setBackgroundResource(R.drawable.mic_btn_nopress_shape);
+                        camBtnUp();
+                        break;
+                }
+                return false;
+            }
+        });
         mBtnMic.setOnTouchListener(new View.OnTouchListener() {
             @Override
             public boolean onTouch(View v, MotionEvent event) {
@@ -207,7 +277,8 @@ public class CallActivity extends AppCompatActivity {
         mPeerConnectionFactory = createPeerConnectionFactory(this);
 
         // NOTE: this _must_ happen while PeerConnectionFactory is alive!
-        Logging.enableLogToDebugOutput(Logging.Severity.LS_VERBOSE);
+//        Logging.enableLogToDebugOutput(Logging.Severity.LS_VERBOSE);
+        Logging.enableLogToDebugOutput(Logging.Severity.LS_INFO);
 
         if (mIsServer) {
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
@@ -321,7 +392,7 @@ public class CallActivity extends AppCompatActivity {
         mPeerConnection.createOffer(new SimpleSdpObserver() {
             @Override
             public void onCreateSuccess(SessionDescription sessionDescription) {
-                Log.i(TAG, "Create local offer success: \n" + sessionDescription.description);
+                Log.i(TAG, "OAA-Create local offer success: \n" + sessionDescription.description);
                 logcatOnUI("SdpObserver: onCreateSuccess!");
                 mPeerConnection.setLocalDescription(new SimpleSdpObserver(), sessionDescription);
                 JSONObject message = new JSONObject();
@@ -356,7 +427,7 @@ public class CallActivity extends AppCompatActivity {
         mPeerConnection.createAnswer(new SimpleSdpObserver() {
             @Override
             public void onCreateSuccess(SessionDescription sessionDescription) {
-                Log.i(TAG, "Create answer success !");
+                Log.i(TAG, "OAA-Create answer success: \n" + sessionDescription.description);
                 mPeerConnection.setLocalDescription(new SimpleSdpObserver(),
                                                     sessionDescription);
 
@@ -418,8 +489,11 @@ public class CallActivity extends AppCompatActivity {
             return null;
         }
 
-        List<String> mediaStreamLabels = Collections.singletonList("ARDAMS");
-        connection.addTrack(mVideoTrack, mediaStreamLabels);
+
+        if (mIsServer) {
+            List<String> mediaStreamLabels = Collections.singletonList("ARDAMS");
+            connection.addTrack(mVideoTrack, mediaStreamLabels);
+        }
         // connection.addTrack(mAudioTrack, mediaStreamLabels);
 
         return connection;
@@ -428,11 +502,18 @@ public class CallActivity extends AppCompatActivity {
     public PeerConnectionFactory createPeerConnectionFactory(Context context) {
         final VideoEncoderFactory encoderFactory;
         final VideoDecoderFactory decoderFactory;
-
-        encoderFactory = new DefaultVideoEncoderFactory(
-                                mRootEglBase.getEglBaseContext(),
-                                false /* enableIntelVp8Encoder */,
-                                true);
+        if(mIsServer) {
+            encoderFactory = new DefaultVideoEncoderFactory(
+                    mRootEglBase.getEglBaseContext(),
+                    true /* enableIntelVp8Encoder */,
+                    false);
+        }
+        else {
+            encoderFactory = new DefaultVideoEncoderFactory(
+                    mRootEglBase.getEglBaseContext(),
+                    false /* enableIntelVp8Encoder */,
+                    true);
+        }
         decoderFactory = new DefaultVideoDecoderFactory(mRootEglBase.getEglBaseContext());
 
         PeerConnectionFactory.initialize(PeerConnectionFactory.InitializationOptions.builder(context)
@@ -700,7 +781,7 @@ public class CallActivity extends AppCompatActivity {
                 }else if(type.equals("answer")) {
                     onRemoteAnswerReceived(message);
                 }else if(type.equals("candidate")) {
-                        onRemoteCandidateReceived(message);
+                    onRemoteCandidateReceived(message);
                 }else{
                     Log.w(TAG, "the type is invalid: " + type);
                 }
@@ -718,11 +799,13 @@ public class CallActivity extends AppCompatActivity {
 
             try {
                 String description = message.getString("sdp");
+                SessionDescription sdp = new SessionDescription(
+                                            SessionDescription.Type.OFFER,
+                                            description);
                 mPeerConnection.setRemoteDescription(
                                             new SimpleSdpObserver(),
-                                            new SessionDescription(
-                                                                SessionDescription.Type.OFFER,
-                                                                description));
+                                            sdp);
+                Log.d(TAG, "Msg-onRemoteOfferReceived: " + sdp.description);
                 doAnswerCall();
             } catch (JSONException e) {
                 e.printStackTrace();
@@ -733,11 +816,13 @@ public class CallActivity extends AppCompatActivity {
             logcatOnUI("Receive Remote Answer ...");
             try {
                 String description = message.getString("sdp");
+                SessionDescription sdp = new SessionDescription(
+                                    SessionDescription.Type.ANSWER,
+                                    description);
                 mPeerConnection.setRemoteDescription(
                                     new SimpleSdpObserver(),
-                                    new SessionDescription(
-                                            SessionDescription.Type.ANSWER,
-                                            description));
+                                    sdp);
+                Log.d(TAG, "Msg-onRemoteAnswerReceived: " + sdp.description);
             } catch (JSONException e) {
                 e.printStackTrace();
             }
@@ -751,7 +836,7 @@ public class CallActivity extends AppCompatActivity {
                         new IceCandidate(message.getString("id"),
                                             message.getInt("label"),
                                             message.getString("candidate"));
-
+                Log.d(TAG, "Msg-onRemoteCandidateReceived: " + remoteIceCandidate.sdp);
                 mPeerConnection.addIceCandidate(remoteIceCandidate);
             } catch (JSONException e) {
                 e.printStackTrace();
