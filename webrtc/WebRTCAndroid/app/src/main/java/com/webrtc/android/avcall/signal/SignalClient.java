@@ -22,6 +22,24 @@ import io.socket.client.Socket;
 import io.socket.emitter.Emitter;
 import okhttp3.OkHttpClient;
 
+/**
+ *   client A/B send                    <---> SignalClientServer send
+ *      - which function                  :       - which function
+ *   join                               <---> joined
+ *      - joinRoom(url, roomName)         :       - OnSignalEventListener.onUserJoined(roomName, userID)
+ *   join                               <---> full(If 2 users in room)
+ *      - joinRoom(url, roomName)         :       - OnSignalEventListener.onRoomFull(roomName, userID)
+ *   join(by other and indeed joined)   <---> otherjoin
+ *      - /                               :       - OnSignalEventListener.onRemoteUserJoined(roomName)
+ *   leave                              <---> leaved
+ *      - leaveRoom()                     :       - OnSignalEventListener.onUserLeaved(roomName, userID)
+ *   leave(by other)                    <---> bye
+ *      - /                               :       - OnSignalEventListener.onRemoteUserLeaved(roomName, userID)
+ *   message                            <---> message(to other)
+ *      - sendMessage(message)            :       - /
+ *   message(by other)                  <---> message(to you)
+ *      - /                               :       - OnSignalEventListener.onMessage(message)
+ */
 public class SignalClient {
 
     private static final String TAG = "SignalClient";
@@ -29,7 +47,7 @@ public class SignalClient {
     private static SignalClient mInstance;
     private OnSignalEventListener mOnSignalEventListener;
 
-    private Socket mSocket;
+    private Socket mSocket = null;
     private String mRoomName;
 
     public interface OnSignalEventListener {
@@ -143,8 +161,8 @@ public class SignalClient {
         mSocket.on(Socket.EVENT_CONNECT_ERROR, new Emitter.Listener() {
             @Override
             public void call(Object... args) {
-
-                Log.e(TAG, "onConnectError: " + args);
+                for(int i = 0; i < args.length; i++)
+                    Log.e(TAG, "onConnectError: " + args[i]);
             }
         });
 

@@ -29,7 +29,17 @@
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
         android:layout_marginLeft="10dp"
-        android:layout_marginRight="10dp" />
+        android:layout_marginRight="10dp"
+        android:text="@string/default_room"/>
+
+    <CheckBox
+        android:id="@+id/ServerCheckBox"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_marginLeft="10dp"
+        android:layout_marginRight="10dp"
+        android:checked="false"
+        android:text="@string/is_server" />
 
     <Button
         android:id="@+id/JoinRoomBtn"

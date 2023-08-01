@@ -1,10 +1,14 @@
 package com.webrtc.android.avcall.activity;
 
 import android.Manifest;
+import android.app.Activity;
 import android.content.Context;
 import android.content.Intent;
+import android.media.projection.MediaProjection;
+import android.media.projection.MediaProjectionManager;
+import android.os.Build;
 import android.os.Bundle;
-import android.provider.MediaStore;
+import android.support.annotation.Nullable;
 import android.support.v7.app.AppCompatActivity;
 import android.text.method.ScrollingMovementMethod;
 import android.util.Log;
@@ -14,6 +18,7 @@ import android.widget.Button;
 import android.widget.TextView;
 
 import com.webrtc.android.avcall.R;
+import com.webrtc.android.avcall.service.MediaService;
 import com.webrtc.android.avcall.signal.SignalClient;
 
 import org.json.JSONException;
@@ -36,6 +41,7 @@ import org.webrtc.PeerConnection;
 import org.webrtc.PeerConnectionFactory;
 import org.webrtc.RendererCommon;
 import org.webrtc.RtpReceiver;
+import org.webrtc.ScreenCapturerAndroid;
 import org.webrtc.SdpObserver;
 import org.webrtc.SessionDescription;
 import org.webrtc.SurfaceTextureHelper;
@@ -43,16 +49,12 @@ import org.webrtc.SurfaceViewRenderer;
 import org.webrtc.VideoCapturer;
 import org.webrtc.VideoDecoderFactory;
 import org.webrtc.VideoEncoderFactory;
-import org.webrtc.VideoFrame;
-import org.webrtc.VideoSink;
 import org.webrtc.VideoSource;
 import org.webrtc.VideoTrack;
 
-import java.util.ArrayList;
 import java.util.Collections;
 import java.util.LinkedList;
 import java.util.List;
-import java.util.UUID;
 
 import pub.devrel.easypermissions.EasyPermissions;
 
@@ -66,6 +68,7 @@ public class CallActivity extends AppCompatActivity {
 
     private TextView mLogcatView;
     private Button mBtnMic;
+    private Boolean mIsServer;
     private static final String TAG = "CallActivity";
 
     public static final String VIDEO_TRACK_ID = "1";//"ARDAMSv0";
@@ -109,27 +112,81 @@ public class CallActivity extends AppCompatActivity {
         mAudioTrack.setEnabled(false);
     }
     @Override
+    protected void onActivityResult(int requestCode, int resultCode, @Nullable Intent data) {
+        super.onActivityResult(requestCode, resultCode, data);
+        if(requestCode == 29) {
+            if(resultCode == RESULT_OK) {
+                startScreenSharing(true, resultCode, data);
+            } else {
+                Log.e(TAG,"Screen sharing permission denied!");
+            }
+        }
+    }
+    public VideoCapturer createScreenCapturer(Intent mMediaProjectionPermissionResultData, int mMediaProjectionPermissionResultCode) {
+        if (mMediaProjectionPermissionResultCode != Activity.RESULT_OK) {
+            return null;
+        }
+        return new ScreenCapturerAndroid(
+                mMediaProjectionPermissionResultData, new MediaProjection.Callback() {
+            @Override
+            public void onStop() {
+            }
+        });
+    }
+    private void startScreenSharing(Boolean isScreenSharing, int mMediaProjectionPermissionResultCode, Intent mMediaProjectionPermissionResultData) {
+        if (isScreenSharing) {
+            mVideoCapturer = createScreenCapturer(mMediaProjectionPermissionResultData, mMediaProjectionPermissionResultCode);
+            if (mVideoCapturer != null) {
+                mSurfaceTextureHelper = SurfaceTextureHelper.create("CaptureThread", mRootEglBase.getEglBaseContext());
+                VideoSource videoSource = mPeerConnectionFactory.createVideoSource(mIsServer);
+                mVideoCapturer.initialize(mSurfaceTextureHelper, getApplicationContext(), videoSource.getCapturerObserver());
+                mVideoCapturer.startCapture(VIDEO_RESOLUTION_WIDTH, VIDEO_RESOLUTION_HEIGHT, VIDEO_FPS);
+
+                mVideoTrack = mPeerConnectionFactory.createVideoTrack(VIDEO_TRACK_ID, videoSource);
+                mVideoTrack.setEnabled(true);
+                mVideoTrack.addSink(mLocalSurfaceView);
+
+                AudioSource audioSource = mPeerConnectionFactory.createAudioSource(new MediaConstraints());
+                mAudioTrack = mPeerConnectionFactory.createAudioTrack(AUDIO_TRACK_ID, audioSource);
+                mAudioTrack.setEnabled(true);
+
+                SignalClient.getInstance().setSignalEventListener(mOnSignalEventListener);
+
+                String serverAddr = getIntent().getStringExtra("ServerAddr");
+                String roomName = getIntent().getStringExtra("RoomName");
+                SignalClient.getInstance().joinRoom(serverAddr, roomName);
+            }
+        } else {
+            Log.e(TAG, "mVideoCapturer is NULL!!!");
+        }
+    }
+    @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
         setContentView(R.layout.activity_call);
 
+        mIsServer = getIntent().getStringExtra("IsServer").equals("true");
+        Log.d(TAG, "is_Server: " + mIsServer);
+
         mLogcatView = findViewById(R.id.LogcatView);
         mLogcatView.setMovementMethod(ScrollingMovementMethod.getInstance());
         mRootEglBase = EglBase.create();
-
-        mLocalSurfaceView = findViewById(R.id.LocalSurfaceView);
-        mRemoteSurfaceView = findViewById(R.id.RemoteSurfaceView);
         mBtnMic = findViewById( R.id.Mic );
+
+        mLocalSurfaceView = (!mIsServer) ? findViewById(R.id.RemoteSurfaceView) : findViewById(R.id.LocalSurfaceView);
         mLocalSurfaceView.init(mRootEglBase.getEglBaseContext(), null);
         mLocalSurfaceView.setScalingType(RendererCommon.ScalingType.SCALE_ASPECT_FILL);
-        mLocalSurfaceView.setMirror(true);
+        mLocalSurfaceView.setMirror(!mIsServer);
         mLocalSurfaceView.setEnableHardwareScaler(false /* enabled */);
+        if(!mIsServer) mLocalSurfaceView.setZOrderMediaOverlay(true);
 
+        mRemoteSurfaceView = mIsServer ? findViewById(R.id.RemoteSurfaceView) : findViewById(R.id.LocalSurfaceView);
         mRemoteSurfaceView.init(mRootEglBase.getEglBaseContext(), null);
         mRemoteSurfaceView.setScalingType(RendererCommon.ScalingType.SCALE_ASPECT_FILL);
-        mRemoteSurfaceView.setMirror(true);
+        mRemoteSurfaceView.setMirror(mIsServer);
         mRemoteSurfaceView.setEnableHardwareScaler(true /* enabled */);
-        mRemoteSurfaceView.setZOrderMediaOverlay(true);
+        if(mIsServer) mRemoteSurfaceView.setZOrderMediaOverlay(true);
+
         mBtnMic.setOnTouchListener(new View.OnTouchListener() {
             @Override
             public boolean onTouch(View v, MotionEvent event) {
@@ -152,38 +209,51 @@ public class CallActivity extends AppCompatActivity {
         // NOTE: this _must_ happen while PeerConnectionFactory is alive!
         Logging.enableLogToDebugOutput(Logging.Severity.LS_VERBOSE);
 
-        mVideoCapturer = createVideoCapturer();
+        if (mIsServer) {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                startForegroundService(new Intent(this, MediaService.class));
+            } else {
+                startService(new Intent(this, MediaService.class));
+            }
+            MediaProjectionManager mediaProjectionManager = (MediaProjectionManager)getSystemService(Context.MEDIA_PROJECTION_SERVICE);
+            startActivityForResult(mediaProjectionManager.createScreenCaptureIntent(), 29);
+        } else {
+            mVideoCapturer = createVideoCapturer();
 
-        mSurfaceTextureHelper = SurfaceTextureHelper.create("CaptureThread", mRootEglBase.getEglBaseContext());
-        VideoSource videoSource = mPeerConnectionFactory.createVideoSource(false);
-        mVideoCapturer.initialize(mSurfaceTextureHelper, getApplicationContext(), videoSource.getCapturerObserver());
+            mSurfaceTextureHelper = SurfaceTextureHelper.create("CaptureThread", mRootEglBase.getEglBaseContext());
+            VideoSource videoSource = mPeerConnectionFactory.createVideoSource(false);
+            mVideoCapturer.initialize(mSurfaceTextureHelper, getApplicationContext(), videoSource.getCapturerObserver());
 
-        mVideoTrack = mPeerConnectionFactory.createVideoTrack(VIDEO_TRACK_ID, videoSource);
-        mVideoTrack.setEnabled(true);
-        mVideoTrack.addSink(mLocalSurfaceView);
+            mVideoTrack = mPeerConnectionFactory.createVideoTrack(VIDEO_TRACK_ID, videoSource);
+            mVideoTrack.setEnabled(true);
+            mVideoTrack.addSink(mLocalSurfaceView);
 
-        AudioSource audioSource = mPeerConnectionFactory.createAudioSource(new MediaConstraints());
-        mAudioTrack = mPeerConnectionFactory.createAudioTrack(AUDIO_TRACK_ID, audioSource);
-        mAudioTrack.setEnabled(true);
+            AudioSource audioSource = mPeerConnectionFactory.createAudioSource(new MediaConstraints());
+            mAudioTrack = mPeerConnectionFactory.createAudioTrack(AUDIO_TRACK_ID, audioSource);
+            mAudioTrack.setEnabled(true);
 
-        SignalClient.getInstance().setSignalEventListener(mOnSignalEventListener);
+            SignalClient.getInstance().setSignalEventListener(mOnSignalEventListener);
 
-        String serverAddr = getIntent().getStringExtra("ServerAddr");
-        String roomName = getIntent().getStringExtra("RoomName");
-        SignalClient.getInstance().joinRoom(serverAddr, roomName);
+            String serverAddr = getIntent().getStringExtra("ServerAddr");
+            String roomName = getIntent().getStringExtra("RoomName");
+            SignalClient.getInstance().joinRoom(serverAddr, roomName);
+        }
     }
 
     @Override
     protected void onResume() {
         super.onResume();
-        mVideoCapturer.startCapture(VIDEO_RESOLUTION_WIDTH, VIDEO_RESOLUTION_HEIGHT, VIDEO_FPS);
+        if (!mIsServer) {
+            mVideoCapturer.startCapture(VIDEO_RESOLUTION_WIDTH, VIDEO_RESOLUTION_HEIGHT, VIDEO_FPS);
+        }
     }
 
     @Override
     protected void onPause() {
         super.onPause();
         try {
-            mVideoCapturer.stopCapture();
+            if (!mIsServer)
+                mVideoCapturer.stopCapture();
         } catch (InterruptedException e) {
             e.printStackTrace();
         }
@@ -193,9 +263,11 @@ public class CallActivity extends AppCompatActivity {
     protected void onDestroy() {
         super.onDestroy();
         doLeave();
+        stopService(new Intent(this, MediaService.class));
         mLocalSurfaceView.release();
         mRemoteSurfaceView.release();
-        mVideoCapturer.dispose();
+        if (!mIsServer)
+            mVideoCapturer.dispose();
         mSurfaceTextureHelper.dispose();
         PeerConnectionFactory.stopInternalTracingCapture();
         PeerConnectionFactory.shutdownInternalTracer();
@@ -335,7 +407,7 @@ public class CallActivity extends AppCompatActivity {
         // Use ECDSA encryption.
         //rtcConfig.keyType = PeerConnection.KeyType.ECDSA;
         // Enable DTLS for normal calls and disable for loopback calls.
-        rtcConfig.enableDtlsSrtp = true;
+//        rtcConfig.enableDtlsSrtp = true;
         //rtcConfig.sdpSemantics = PeerConnection.SdpSemantics.UNIFIED_PLAN;
         PeerConnection connection =
                 mPeerConnectionFactory.createPeerConnection(rtcConfig,
@@ -594,7 +666,7 @@ public class CallActivity extends AppCompatActivity {
                 mRemoteSurfaceView = null;
             }
 
-            if(mVideoCapturer != null) {
+            if(mVideoCapturer != null && !mIsServer) {
                 mVideoCapturer.dispose();
                 mVideoCapturer = null;
             }

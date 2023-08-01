@@ -5,6 +5,7 @@ import android.content.Intent;
 import android.os.Bundle;
 import android.support.v7.app.AppCompatActivity;
 import android.view.View;
+import android.widget.CheckBox;
 import android.widget.EditText;
 
 import com.webrtc.android.avcall.R;
@@ -29,6 +30,10 @@ public class MainActivity extends AppCompatActivity {
                     Intent intent = new Intent(MainActivity.this, CallActivity.class);
                     intent.putExtra("ServerAddr", addr);
                     intent.putExtra("RoomName", roomName);
+                    if(((CheckBox)findViewById(R.id.ServerCheckBox)).isChecked())
+                        intent.putExtra("IsServer", "true");
+                    else
+                        intent.putExtra("IsServer", "false");
                     startActivity(intent);
                 }
             }
@@ -51,3 +56,4 @@ public class MainActivity extends AppCompatActivity {
         super.onDestroy();
     }
 }
+

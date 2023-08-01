@@ -3,6 +3,9 @@
 buildscript {
 
     repositories {
+        flatDir {
+            dirs 'libs'
+        }
         google()
         jcenter()
 //        jcenter(){url 'http://jcenter.bintray.com/'}
@@ -18,6 +21,9 @@ buildscript {
 
 allprojects {
     repositories {
+        flatDir {
+            dirs 'libs'
+        }
         google()
         jcenter()
 //        jcenter(){url 'http://jcenter.bintray.com/'}

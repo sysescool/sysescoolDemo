@@ -3,8 +3,11 @@
     <string name="join_room">Join</string>
     <string name="room_tips">Input room name: </string>
     <string name="server_tips">Input server addr: </string>
-    <string name="default_server">https://IP_DOMAIN:PORT</string>
+    <string name="default_room">66</string>
+    <string name="is_server">is_server</string>
 
+
+    <string name="default_server">https://IP_DOMAIN:PORT</string>
     <string name="STUN_SERVER">stun:IP_DOMAIN:PORT</string>
     <string name="STUN_USRNAM">username</string>
     <string name="STUN_PASWOD">password</string>
