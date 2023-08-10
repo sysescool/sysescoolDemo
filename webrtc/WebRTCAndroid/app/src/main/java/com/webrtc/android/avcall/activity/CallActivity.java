@@ -4,6 +4,8 @@ import android.Manifest;
 import android.app.Activity;
 import android.content.Context;
 import android.content.Intent;
+import android.media.MediaCodecInfo;
+import android.media.MediaCodecList;
 import android.media.projection.MediaProjection;
 import android.media.projection.MediaProjectionManager;
 import android.os.Build;
@@ -16,6 +18,8 @@ import android.view.MotionEvent;
 import android.view.View;
 import android.widget.Button;
 import android.widget.TextView;
+
+import androidx.media3.common.MimeTypes;
 
 import com.webrtc.android.avcall.R;
 import com.webrtc.android.avcall.service.MediaService;
@@ -32,6 +36,8 @@ import org.webrtc.DataChannel;
 import org.webrtc.DefaultVideoDecoderFactory;
 import org.webrtc.DefaultVideoEncoderFactory;
 import org.webrtc.EglBase;
+import org.webrtc.HardwareVideoDecoderFactory;
+import org.webrtc.HardwareVideoEncoderFactory;
 import org.webrtc.IceCandidate;
 import org.webrtc.Logging;
 import org.webrtc.MediaConstraints;
@@ -39,6 +45,7 @@ import org.webrtc.MediaStream;
 import org.webrtc.MediaStreamTrack;
 import org.webrtc.PeerConnection;
 import org.webrtc.PeerConnectionFactory;
+import org.webrtc.Predicate;
 import org.webrtc.RendererCommon;
 import org.webrtc.RtpParameters;
 import org.webrtc.RtpReceiver;
@@ -47,14 +54,17 @@ import org.webrtc.RtpTransceiver;
 import org.webrtc.ScreenCapturerAndroid;
 import org.webrtc.SdpObserver;
 import org.webrtc.SessionDescription;
+import org.webrtc.SoftwareVideoDecoderFactory;
 import org.webrtc.SurfaceTextureHelper;
 import org.webrtc.SurfaceViewRenderer;
 import org.webrtc.VideoCapturer;
+import org.webrtc.VideoCodecInfo;
 import org.webrtc.VideoDecoderFactory;
 import org.webrtc.VideoEncoderFactory;
 import org.webrtc.VideoSource;
 import org.webrtc.VideoTrack;
 
+import java.util.ArrayList;
 import java.util.Collections;
 import java.util.LinkedList;
 import java.util.List;
@@ -75,8 +85,8 @@ public class CallActivity extends AppCompatActivity {
     private Boolean mIsServer;
     private static final String TAG = "CallActivity";
 
-    public static final String VIDEO_TRACK_ID = "1";//"ARDAMSv0";
-    public static final String AUDIO_TRACK_ID = "2";//"ARDAMSa0";
+    public static final String VIDEO_TRACK_ID = "sysescool1";//"ARDAMSv0";
+    public static final String AUDIO_TRACK_ID = "sysescool2";//"ARDAMSa0";
 
     //用于数据传输
     private PeerConnection mPeerConnection = null;
@@ -102,14 +112,13 @@ public class CallActivity extends AppCompatActivity {
             EasyPermissions.requestPermissions(this, "Need permissions for camera", 0, perms);
         }
         if (mPeerConnection != null && EasyPermissions.hasPermissions(this, perms)) {
-
-            RtpTransceiver transceiver = mPeerConnection.getTransceivers().get(0);
-
             logcatOnUI("camBtn: videoTrack Added!");
             List<String> mediaStreamLabels = Collections.singletonList("ARDAMSv0");
-            mPeerConnection.addTrack(mVideoTrack, mediaStreamLabels);
+//            mPeerConnection.addTrack(mVideoTrack, mediaStreamLabels);
+            mPeerConnection.addTransceiver(mVideoTrack, new RtpTransceiver.RtpTransceiverInit(RtpTransceiver.RtpTransceiverDirection.SEND_ONLY));
             mVideoTrackAdded = true;
             mVideoTrack.setEnabled(true);
+//            mPeerConnection.restartIce();
             doStartCall();
         }
 //        if (EasyPermissions.hasPermissions(this, perms) && mVideoTrackAdded) {
@@ -165,6 +174,8 @@ public class CallActivity extends AppCompatActivity {
     private void micBtnUp() {
         mAudioTrack.setEnabled(false);
     }
+
+    // 以下和屏幕录制方法的代码来自 https://openvidu.discourse.group/t/implement-screen-share-from-android-application-to-web-users/3381
     @Override
     protected void onActivityResult(int requestCode, int resultCode, @Nullable Intent data) {
         super.onActivityResult(requestCode, resultCode, data);
@@ -214,6 +225,8 @@ public class CallActivity extends AppCompatActivity {
             Log.e(TAG, "mVideoCapturer is NULL!!!");
         }
     }
+    // 屏幕录制功能代码结束
+
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
@@ -386,8 +399,8 @@ public class CallActivity extends AppCompatActivity {
             mPeerConnection = createPeerConnection();
         }
         MediaConstraints mediaConstraints = new MediaConstraints();
-        mediaConstraints.mandatory.add(new MediaConstraints.KeyValuePair("OfferToReceiveAudio", "true"));
-        mediaConstraints.mandatory.add(new MediaConstraints.KeyValuePair("OfferToReceiveVideo", "true"));
+//        mediaConstraints.mandatory.add(new MediaConstraints.KeyValuePair("OfferToReceiveAudio", "true"));
+//        mediaConstraints.mandatory.add(new MediaConstraints.KeyValuePair("OfferToReceiveVideo", "true"));
         mediaConstraints.optional.add(new MediaConstraints.KeyValuePair("DtlsSrtpKeyAgreement", "true"));
         mPeerConnection.createOffer(new SimpleSdpObserver() {
             @Override
@@ -491,30 +504,85 @@ public class CallActivity extends AppCompatActivity {
 
 
         if (mIsServer) {
-            List<String> mediaStreamLabels = Collections.singletonList("ARDAMS");
-            connection.addTrack(mVideoTrack, mediaStreamLabels);
+            List<String> mediaStreamLabels = Collections.singletonList("sys-server-send-capture");
+//            connection.addTrack(mVideoTrack, mediaStreamLabels);
+            connection.addTransceiver(mVideoTrack, new RtpTransceiver.RtpTransceiverInit(RtpTransceiver.RtpTransceiverDirection.SEND_ONLY));
         }
         // connection.addTrack(mAudioTrack, mediaStreamLabels);
 
         return connection;
     }
-
+    private static MediaCodecInfo[] selectCodec(String mimeType, boolean isEncoder) {
+        ArrayList<MediaCodecInfo> mediaCodecInfos = new ArrayList<MediaCodecInfo>();
+        int numCodecs = MediaCodecList.getCodecCount();
+        for (int i = 0; i < numCodecs; i++) {
+            MediaCodecInfo codecInfo = MediaCodecList.getCodecInfoAt(i);
+            if (isEncoder && !codecInfo.isEncoder()) {
+                continue;
+            }
+            if (!isEncoder && codecInfo.isEncoder()) {
+                continue;
+            }
+            String[] types = codecInfo.getSupportedTypes();
+            for (int j = 0; j < types.length; j++) {
+                if (types[j].equalsIgnoreCase(mimeType)) {
+                    mediaCodecInfos.add(codecInfo);
+                }
+            }
+        }
+        return mediaCodecInfos.toArray(new MediaCodecInfo[mediaCodecInfos.size()]);
+    }
+    private Predicate <MediaCodecInfo> returnPredicate(String mimeTypes, boolean isEncoder) {
+        MediaCodecInfo[] mediaCodecInfos = selectCodec(mimeTypes, isEncoder);
+        return new Predicate<MediaCodecInfo>() {
+            @Override
+            public boolean test(MediaCodecInfo info) {
+                for (MediaCodecInfo mediaCodecInfo : mediaCodecInfos) {
+                    if (info.getName().equals(mediaCodecInfo.getName())) {
+                        return true;
+                    }
+                }
+                return false;
+            }
+        };
+    }
     public PeerConnectionFactory createPeerConnectionFactory(Context context) {
         final VideoEncoderFactory encoderFactory;
         final VideoDecoderFactory decoderFactory;
         if(mIsServer) {
-            encoderFactory = new DefaultVideoEncoderFactory(
+            encoderFactory = new HardwareVideoEncoderFactory(
                     mRootEglBase.getEglBaseContext(),
                     true /* enableIntelVp8Encoder */,
-                    false);
+                    true
+//                    ,returnPredicate(MimeTypes.VIDEO_VP8, true)
+            );
+            for (VideoCodecInfo videoCodecInfo : encoderFactory.getSupportedCodecs()) {
+                Log.d(TAG, "isServer: support video encoder: " + videoCodecInfo.name);
+            }
+            decoderFactory = new HardwareVideoDecoderFactory(mRootEglBase.getEglBaseContext()
+                    ,returnPredicate(MimeTypes.VIDEO_H264, false)
+            );
+            for (VideoCodecInfo videoCodecInfo : decoderFactory.getSupportedCodecs()) {
+                Log.d(TAG, "isServer: support video decoder: " + videoCodecInfo.name);
+            }
         }
         else {
-            encoderFactory = new DefaultVideoEncoderFactory(
+            encoderFactory = new HardwareVideoEncoderFactory(
                     mRootEglBase.getEglBaseContext(),
-                    false /* enableIntelVp8Encoder */,
-                    true);
+                    true /* enableIntelVp8Encoder */,
+                    true
+//                    ,returnPredicate(MimeTypes.VIDEO_H264, true)
+            );
+            for (VideoCodecInfo videoCodecInfo : encoderFactory.getSupportedCodecs()) {
+                Log.d(TAG, "isClient: support video encoder: " + videoCodecInfo.name);
+            }
+            decoderFactory = new HardwareVideoDecoderFactory(mRootEglBase.getEglBaseContext()
+//                    ,returnPredicate(MimeTypes.VIDEO_VP8, false)
+            );
+            for (VideoCodecInfo videoCodecInfo : decoderFactory.getSupportedCodecs()) {
+                Log.d(TAG, "isClient: support video decoder: " + videoCodecInfo.name);
+            }
         }
-        decoderFactory = new DefaultVideoDecoderFactory(mRootEglBase.getEglBaseContext());
 
         PeerConnectionFactory.initialize(PeerConnectionFactory.InitializationOptions.builder(context)
                 .setEnableInternalTracer(true)
